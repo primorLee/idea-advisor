@@ -27,7 +27,7 @@ export async function POST(request) {
     }
 
     const completion = await client.chat.completions.create({
-      model: "openai/gpt-5.3 chat",
+      model: "openai/gpt-5.3-chat",
       messages: [
         {
           role: "system",
