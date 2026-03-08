@@ -50,10 +50,11 @@ export default function Home() {
       }),
     });
 
-    const data = await response.json();
+    const data = await response.json().catch(() => ({}));
 
     if (!response.ok) {
-      throw new Error(data.error || "Request failed");
+      const message = data?.error || `Request failed (${response.status})`;
+      throw new Error(message);
     }
 
     return data.text;
@@ -78,7 +79,11 @@ export default function Home() {
       setFeedbacks(feedbackMap);
     } catch (error) {
       console.error(error);
-      alert("调用失败，请检查 OpenRouter API Key 或后端日志。");
+      const message =
+        error instanceof Error
+          ? error.message
+          : "调用失败，请检查 OpenRouter API Key 或后端日志。";
+      alert(`调用失败：${message}`);
     } finally {
       setLoading(false);
     }

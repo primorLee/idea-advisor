@@ -54,10 +54,24 @@ export async function POST(request) {
 
     return Response.json({ text });
   } catch (error) {
-    console.error("OpenRouter API error:", error);
+    const status = error?.status || 500;
+    const openRouterMessage =
+      error?.error?.message ||
+      error?.response?.data?.error?.message ||
+      error?.message ||
+      "Failed to get response from OpenRouter";
+
+    console.error("OpenRouter API error details:", {
+      status,
+      message: openRouterMessage,
+      raw: error,
+    });
+
     return Response.json(
-      { error: "Failed to get response from OpenRouter" },
-      { status: 500 }
+      {
+        error: `OpenRouter request failed: ${openRouterMessage}`,
+      },
+      { status: Number.isInteger(status) ? status : 500 }
     );
   }
 }
