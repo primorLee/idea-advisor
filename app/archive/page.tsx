@@ -14,12 +14,11 @@ import {
   CheckCircle2,
   Loader2,
 } from "lucide-react";
-import { supabase } from "@/lib/supabase";
 
 interface DebateMessage {
   roleId: string;
   roleTitle: string;
-  round: 1 | 2;
+  round: number;
   status: string;
   text?: string;
 }
@@ -49,6 +48,7 @@ const EXECUTION_LABELS: Record<string, string> = {
   funding: "融资叙事",
   competitor: "竞品对比",
   gtm: "GTM 初版",
+  roi: "成本/ROI",
 };
 
 function timeAgo(dateStr: string) {
@@ -68,8 +68,8 @@ function SessionCard({ session }: { session: Session }) {
   const [activeTab, setActiveTab] = useState<"debate" | "decision" | "execution">("debate");
 
   const executionKeys = Object.keys(session.execution_outputs || {});
-  const round1 = (session.messages || []).filter((m) => m.round === 1 && m.status === "done");
-  const round2 = (session.messages || []).filter((m) => m.round === 2 && m.status === "done");
+  const allMessages = (session.messages || []).filter((m) => m.status === "done");
+  const rounds = [...new Set(allMessages.map((m) => m.round))].sort();
 
   return (
     <motion.div
@@ -77,7 +77,6 @@ function SessionCard({ session }: { session: Session }) {
       animate={{ opacity: 1, y: 0 }}
       className="rounded-2xl border border-slate-700/60 bg-white/5 backdrop-blur-md overflow-hidden"
     >
-      {/* Card header — always visible */}
       <button
         onClick={() => setExpanded((v) => !v)}
         className="w-full text-left p-5 hover:bg-white/5 transition-colors"
@@ -113,7 +112,6 @@ function SessionCard({ session }: { session: Session }) {
         </div>
       </button>
 
-      {/* Expanded content */}
       <AnimatePresence>
         {expanded && (
           <motion.div
@@ -124,7 +122,6 @@ function SessionCard({ session }: { session: Session }) {
             className="overflow-hidden"
           >
             <div className="border-t border-white/10">
-              {/* Tabs */}
               <div className="flex border-b border-white/10 px-5">
                 {(["debate", "decision", "execution"] as const).map((tab) => {
                   const labels = { debate: "辩论记录", decision: "最终判断", execution: "执行模块" };
@@ -146,16 +143,16 @@ function SessionCard({ session }: { session: Session }) {
               </div>
 
               <div className="p-5 space-y-4">
-                {/* Debate tab */}
                 {activeTab === "debate" && (
                   <>
-                    {[1, 2].map((round) => {
-                      const msgs = round === 1 ? round1 : round2;
+                    {rounds.map((round) => {
+                      const msgs = allMessages.filter((m) => m.round === round);
                       if (msgs.length === 0) return null;
+                      const roundLabels: Record<number, string> = { 1: "初步立场", 2: "深入辩论", 3: "最终交锋" };
                       return (
                         <div key={round}>
                           <p className="text-xs text-slate-500 uppercase tracking-widest mb-3">
-                            第{round === 1 ? "一" : "二"}轮
+                            第{round}轮 · {roundLabels[round] ?? ""}
                           </p>
                           <div className="space-y-3">
                             {msgs.map((m, i) => (
@@ -171,7 +168,6 @@ function SessionCard({ session }: { session: Session }) {
                   </>
                 )}
 
-                {/* Decision tab */}
                 {activeTab === "decision" && session.final_decision && (
                   <div className="space-y-3">
                     <div className="rounded-xl bg-white/5 border border-white/10 p-4">
@@ -215,7 +211,6 @@ function SessionCard({ session }: { session: Session }) {
                   </div>
                 )}
 
-                {/* Execution tab */}
                 {activeTab === "execution" && (
                   <div className="space-y-4">
                     {executionKeys.map((k) => (
@@ -245,13 +240,9 @@ export default function ArchivePage() {
   useEffect(() => {
     const load = async () => {
       try {
-        const { data, error } = await supabase
-          .from("debate_sessions")
-          .select("*")
-          .order("created_at", { ascending: false })
-          .limit(50);
-
-        if (error) throw error;
+        const res = await fetch("/api/sessions");
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "加载失败");
         setSessions(data || []);
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : "加载失败");
@@ -303,7 +294,7 @@ export default function ArchivePage() {
         {error && (
           <div className="rounded-2xl border border-red-500/30 bg-red-950/20 p-6 text-center">
             <p className="text-red-400 text-sm">{error}</p>
-            <p className="text-slate-500 text-xs mt-1">请检查 Supabase 配置是否正确</p>
+            <p className="text-slate-500 text-xs mt-1">请检查 Supabase 配置或数据表是否已创建</p>
           </div>
         )}
 

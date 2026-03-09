@@ -13,7 +13,7 @@ export async function GET() {
 
   const { data, error } = await supabase
     .from("debate_sessions")
-    .select("id, created_at, idea, final_decision, execution_outputs")
+    .select("id, created_at, idea, messages, final_decision, execution_outputs")
     .order("created_at", { ascending: false })
     .limit(50);
 
