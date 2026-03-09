@@ -25,6 +25,7 @@ import {
   PieChart,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import Markdown from "@/components/Markdown";
 
 // ─── Advisor roles ────────────────────────────────────────────────────────────
 
@@ -213,13 +214,9 @@ function SpeechCard({ message, role }: { message: Message; role: Role }) {
             <p className="text-red-400 text-sm leading-relaxed">{message.text}</p>
           )}
           {message.status === "done" && message.text && (
-            <p
-              className={`text-sm leading-relaxed whitespace-pre-wrap ${
-                isDevil ? "text-red-200" : "text-slate-300"
-              }`}
-            >
+            <Markdown className={isDevil ? "text-red-200" : "text-slate-300"}>
               {message.text}
-            </p>
+            </Markdown>
           )}
         </div>
       </div>
@@ -488,9 +485,9 @@ function ExecutionPanel({
                   ))}
                 </div>
               ) : (
-                <p className="text-slate-300 text-sm leading-relaxed whitespace-pre-wrap">
+                <Markdown className="text-slate-300">
                   {outputs[expandedType]}
-                </p>
+                </Markdown>
               )}
             </div>
           </motion.div>

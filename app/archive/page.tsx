@@ -14,6 +14,7 @@ import {
   CheckCircle2,
   Loader2,
 } from "lucide-react";
+import Markdown from "@/components/Markdown";
 
 interface DebateMessage {
   roleId: string;
@@ -158,7 +159,7 @@ function SessionCard({ session }: { session: Session }) {
                             {msgs.map((m, i) => (
                               <div key={i} className="rounded-xl bg-white/5 border border-white/10 p-4">
                                 <p className="text-xs text-slate-500 mb-1.5">{m.roleTitle}</p>
-                                <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">{m.text}</p>
+                                <Markdown className="text-slate-300">{m.text ?? ""}</Markdown>
                               </div>
                             ))}
                           </div>
@@ -216,9 +217,9 @@ function SessionCard({ session }: { session: Session }) {
                     {executionKeys.map((k) => (
                       <div key={k} className="rounded-xl bg-white/5 border border-white/10 p-4">
                         <p className="text-xs text-slate-500 mb-2">{EXECUTION_LABELS[k] || k}</p>
-                        <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">
+                        <Markdown className="text-slate-300">
                           {session.execution_outputs[k]}
-                        </p>
+                        </Markdown>
                       </div>
                     ))}
                   </div>
