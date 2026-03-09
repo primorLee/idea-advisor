@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   TrendingUp,
@@ -23,6 +23,8 @@ import {
   Archive,
   ChevronDown,
   PieChart,
+  Send,
+  SkipForward,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import Markdown from "@/components/Markdown";
@@ -113,6 +115,10 @@ interface Message {
   text?: string;
 }
 
+type PreviousComment = { roleTitle: string; text: string; round: number };
+
+type RoundPhase = "debating" | "awaiting-user" | "summarizing" | "done";
+
 interface FinalDecision {
   verdict: string;
   biggest_risk: string;
@@ -123,13 +129,10 @@ interface FinalDecision {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function filterContext(
-  all: { roleTitle: string; text: string; round: number }[],
-  mode: string
-) {
+function filterContext(all: PreviousComment[], mode: string) {
   if (mode === "brief") return all.slice(-3);
   if (mode === "full") return all;
-  return all.slice(-8); // standard
+  return all.slice(-8);
 }
 
 // ─── ToggleGroup ──────────────────────────────────────────────────────────────
@@ -153,10 +156,9 @@ function ToggleGroup({
           onClick={() => onChange(opt.value)}
           disabled={disabled}
           className={`px-3 py-1 rounded-lg text-xs font-medium transition-all duration-150 border
-            ${
-              value === opt.value
-                ? "bg-indigo-500/30 border-indigo-500/50 text-indigo-300"
-                : "bg-white/5 border-white/10 text-slate-500 hover:text-slate-300 hover:bg-white/10"
+            ${value === opt.value
+              ? "bg-indigo-500/30 border-indigo-500/50 text-indigo-300"
+              : "bg-white/5 border-white/10 text-slate-500 hover:text-slate-300 hover:bg-white/10"
             }
             disabled:opacity-40 disabled:cursor-not-allowed`}
         >
@@ -164,6 +166,128 @@ function ToggleGroup({
         </button>
       ))}
     </div>
+  );
+}
+
+// ─── UserInputPanel ───────────────────────────────────────────────────────────
+
+function UserInputPanel({
+  round,
+  nextRound,
+  onSubmit,
+  onSkip,
+}: {
+  round: number;
+  nextRound: number;
+  onSubmit: (text: string) => void;
+  onSkip: () => void;
+}) {
+  const [draft, setDraft] = useState("");
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+      className="mt-6 rounded-2xl border border-indigo-500/25 bg-indigo-950/20 backdrop-blur-md overflow-hidden"
+    >
+      <div className="h-px w-full bg-gradient-to-r from-indigo-500/40 via-fuchsia-500/40 to-transparent" />
+      <div className="p-5">
+        <div className="flex items-center gap-2 mb-3">
+          <div className="rounded-lg p-1.5 bg-indigo-500/15 shrink-0">
+            <MessageSquare className="w-4 h-4 text-indigo-400" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-white">第{round}轮结束，轮到你发言</p>
+            <p className="text-xs text-slate-500">分享你的观点、追问或补充信息，顾问将在第{nextRound}轮纳入考量</p>
+          </div>
+        </div>
+        <textarea
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder="例如：我们已经有了早期用户验证，月活留存率 60%……"
+          rows={3}
+          className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-slate-200 placeholder:text-slate-600 resize-none outline-none focus:border-indigo-500/50 transition-colors"
+        />
+        <div className="flex gap-2 mt-3 justify-end">
+          <button
+            onClick={onSkip}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium text-slate-500 hover:text-slate-300 bg-white/5 border border-white/10 hover:bg-white/10 transition-all"
+          >
+            <SkipForward className="w-3.5 h-3.5" />
+            跳过，直接开始第{nextRound}轮
+          </button>
+          <button
+            onClick={() => onSubmit(draft.trim())}
+            disabled={!draft.trim()}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 border border-indigo-500/50 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Send className="w-3.5 h-3.5" />
+            发言
+          </button>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+// ─── RoundSummaryCard ─────────────────────────────────────────────────────────
+
+function RoundSummaryCard({
+  round,
+  nextRound,
+  summary,
+  loading,
+  onNext,
+  isLastRound,
+}: {
+  round: number;
+  nextRound: number;
+  summary: string;
+  loading: boolean;
+  onNext: () => void;
+  isLastRound: boolean;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+      className="mt-4 rounded-2xl border border-emerald-500/20 bg-emerald-950/15 backdrop-blur-md overflow-hidden"
+    >
+      <div className="h-px w-full bg-gradient-to-r from-emerald-500/40 via-cyan-500/20 to-transparent" />
+      <div className="p-5">
+        <div className="flex items-center gap-2 mb-3">
+          <div className="rounded-lg p-1.5 bg-emerald-500/15 shrink-0">
+            <Sparkles className="w-4 h-4 text-emerald-400" />
+          </div>
+          <p className="text-sm font-medium text-white">创始人发言摘要 · 第{round}轮</p>
+          {loading && <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400 ml-auto" />}
+        </div>
+
+        {loading ? (
+          <div className="space-y-2">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="h-3 rounded-full bg-slate-700/40 animate-pulse" style={{ width: `${[90, 70, 80][i]}%` }} />
+            ))}
+          </div>
+        ) : (
+          <Markdown className="text-slate-300">{summary}</Markdown>
+        )}
+
+        {!loading && (
+          <div className="mt-4 flex justify-end">
+            <button
+              onClick={onNext}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white bg-white/10 hover:bg-white/20 border border-white/15 transition-all group"
+            >
+              {isLastRound ? "生成最终判断" : `开始第${nextRound}轮辩论`}
+              <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+            </button>
+          </div>
+        )}
+      </div>
+    </motion.div>
   );
 }
 
@@ -188,9 +312,7 @@ function SpeechCard({ message, role }: { message: Message; role: Role }) {
             <Icon className={`w-5 h-5 ${iconColor}`} />
           </div>
           <div className="flex-1 min-w-0">
-            <h3 className={`font-semibold ${isDevil ? "text-red-300" : "text-white"}`}>
-              {title}
-            </h3>
+            <h3 className={`font-semibold ${isDevil ? "text-red-300" : "text-white"}`}>{title}</h3>
             <p className="text-xs text-slate-500 truncate">{role.desc}</p>
           </div>
           {message.status === "loading" && (
@@ -229,9 +351,7 @@ function SpeechCard({ message, role }: { message: Message; role: Role }) {
 function ProgressDots({ messages }: { messages: Message[] }) {
   const activeIdx = messages.findIndex((m) => m.status === "loading");
   const activeRole =
-    activeIdx >= 0
-      ? ADVISOR_ROLES.find((r) => r.id === messages[activeIdx].roleId)
-      : null;
+    activeIdx >= 0 ? ADVISOR_ROLES.find((r) => r.id === messages[activeIdx].roleId) : null;
 
   return (
     <div className="flex items-center gap-3 mb-6">
@@ -377,8 +497,6 @@ function ExecutionPanel({
 
   const handleExecute = async (actionType: string) => {
     if (executing) return;
-
-    // If already generated, just toggle expand
     if (outputs[actionType]) {
       setExpandedType((prev) => (prev === actionType ? null : actionType));
       return;
@@ -427,9 +545,7 @@ function ExecutionPanel({
       className="mt-8"
     >
       <div className="flex items-center gap-3 mb-4 pb-3 border-b border-white/10">
-        <span className="text-xs font-semibold uppercase tracking-widest text-slate-500">
-          第三层
-        </span>
+        <span className="text-xs font-semibold uppercase tracking-widest text-slate-500">第三层</span>
         <span className="text-slate-300 font-semibold">执行延展</span>
         <span className="text-xs text-slate-500 ml-1">— 从判断直接进入行动</span>
       </div>
@@ -485,9 +601,7 @@ function ExecutionPanel({
                   ))}
                 </div>
               ) : (
-                <Markdown className="text-slate-300">
-                  {outputs[expandedType]}
-                </Markdown>
+                <Markdown className="text-slate-300">{outputs[expandedType]}</Markdown>
               )}
             </div>
           </motion.div>
@@ -507,29 +621,143 @@ export default function Home() {
   const [loadingDecision, setLoadingDecision] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
 
-  // New settings
+  // Settings
   const [rounds, setRounds] = useState<number>(2);
   const [contextMode, setContextMode] = useState("standard");
   const [startupCapital, setStartupCapital] = useState("");
 
+  // Round-phase state: tracks whether each round is awaiting user input, summarizing, or done
+  const [roundPhase, setRoundPhase] = useState<Record<number, RoundPhase>>({});
+  const [roundSummaries, setRoundSummaries] = useState<Record<number, string>>({});
+
+  // Mutable refs shared across async calls
+  const allPreviousRef = useRef<PreviousComment[]>([]);
+  const completedMessagesRef = useRef<Message[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  const updateMessage = (roleId: RoleId, round: number, patch: Partial<Message>) => {
+  const scrollToBottom = () =>
+    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+
+  const updateMessage = useCallback((roleId: RoleId, round: number, patch: Partial<Message>) => {
     setMessages((prev) =>
-      prev.map((m) =>
-        m.roleId === roleId && m.round === round ? { ...m, ...patch } : m
-      )
+      prev.map((m) => (m.roleId === roleId && m.round === round ? { ...m, ...patch } : m))
     );
-  };
+  }, []);
+
+  // Trigger final decision + Supabase save (called after last round completes)
+  const triggerFinalDecision = useCallback(async () => {
+    const completedMsgs = completedMessagesRef.current;
+
+    setLoadingDecision(true);
+    let decision: FinalDecision | null = null;
+    try {
+      const res = await fetch("/api/final-decision", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idea, allMessages: completedMsgs }),
+      });
+      const data = await res.json();
+      if (data.verdict) {
+        decision = data as FinalDecision;
+        setFinalDecision(decision);
+      }
+    } catch {
+      // silent
+    } finally {
+      setLoadingDecision(false);
+    }
+
+    try {
+      const { data: session } = await supabase
+        .from("debate_sessions")
+        .insert({ idea, messages: completedMsgs, final_decision: decision })
+        .select("id")
+        .single();
+      if (session?.id) setSessionId(session.id);
+    } catch {
+      // silent
+    }
+
+    scrollToBottom();
+  }, [idea]);
+
+  // Run one round of advisor debate
+  const runRound = useCallback(
+    async (round: number, totalRounds: number, ctxMode: string, capital: string, ideaSnap: string) => {
+      setDebating(true);
+
+      for (const role of ADVISOR_ROLES) {
+        updateMessage(role.id, round, { status: "loading" });
+        scrollToBottom();
+
+        const previousComments = filterContext(allPreviousRef.current, ctxMode);
+
+        const response = await fetch("/api/advisor", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            idea: ideaSnap,
+            roleTitle: role.title,
+            roleDesc: role.desc,
+            previousComments,
+            round,
+            startupCapital: capital,
+          }),
+        });
+
+        const data = await response.json().catch(() => ({}));
+        const msgIdx = completedMessagesRef.current.findIndex(
+          (m) => m.roleId === role.id && m.round === round
+        );
+
+        if (!response.ok) {
+          const errText = data?.error || `请求失败 (${response.status})`;
+          updateMessage(role.id, round, { status: "error", text: errText });
+          if (msgIdx >= 0)
+            completedMessagesRef.current[msgIdx] = {
+              ...completedMessagesRef.current[msgIdx],
+              status: "error",
+              text: errText,
+            };
+          continue;
+        }
+
+        const text: string = data.text ?? "暂无结果";
+        updateMessage(role.id, round, { status: "done", text });
+        allPreviousRef.current.push({ roleTitle: role.title, text, round });
+        if (msgIdx >= 0)
+          completedMessagesRef.current[msgIdx] = {
+            ...completedMessagesRef.current[msgIdx],
+            status: "done",
+            text,
+          };
+      }
+
+      setDebating(false);
+
+      if (round < totalRounds) {
+        // Pause for user input between rounds
+        setRoundPhase((prev) => ({ ...prev, [round]: "awaiting-user" }));
+        scrollToBottom();
+      } else {
+        // Last round done → trigger final decision
+        setRoundPhase((prev) => ({ ...prev, [round]: "done" }));
+        await triggerFinalDecision();
+      }
+    },
+    [updateMessage, triggerFinalDecision]
+  );
 
   const handleSubmit = async () => {
     if (!idea.trim() || debating) return;
 
     setFinalDecision(null);
     setSessionId(null);
+    setRoundPhase({});
+    setRoundSummaries({});
+    allPreviousRef.current = [];
 
     const roundList = Array.from({ length: rounds }, (_, i) => i + 1);
-
     const initial: Message[] = roundList.flatMap((round) =>
       ADVISOR_ROLES.map((role) => ({
         roleId: role.id,
@@ -539,95 +767,53 @@ export default function Home() {
       }))
     );
     setMessages(initial);
-    setDebating(true);
+    completedMessagesRef.current = [...initial];
 
-    const allPrevious: { roleTitle: string; text: string; round: number }[] = [];
-    const completedMessages: Message[] = [...initial];
+    await runRound(1, rounds, contextMode, startupCapital, idea);
+  };
+
+  // Called when user submits their comment between rounds
+  const handleUserSubmit = async (round: number, userText: string) => {
+    const nextRound = round + 1;
+
+    // Add user comment to context
+    allPreviousRef.current.push({ roleTitle: "创始人", text: userText, round });
+
+    // Generate summary
+    setRoundPhase((prev) => ({ ...prev, [round]: "summarizing" }));
+    scrollToBottom();
 
     try {
-      for (const round of roundList) {
-        for (const role of ADVISOR_ROLES) {
-          updateMessage(role.id, round, { status: "loading" });
-          setTimeout(
-            () => bottomRef.current?.scrollIntoView({ behavior: "smooth" }),
-            100
-          );
+      const roundDebate = allPreviousRef.current
+        .filter((c) => c.round === round && c.roleTitle !== "创始人")
+        .map((c) => ({ roleTitle: c.roleTitle, text: c.text }));
 
-          const previousComments = filterContext(allPrevious, contextMode);
-
-          const response = await fetch("/api/advisor", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              idea,
-              roleTitle: role.title,
-              roleDesc: role.desc,
-              previousComments,
-              round,
-              startupCapital,
-            }),
-          });
-
-          const data = await response.json().catch(() => ({}));
-
-          const msgIdx = completedMessages.findIndex(
-            (m) => m.roleId === role.id && m.round === round
-          );
-
-          if (!response.ok) {
-            const errText = data?.error || `请求失败 (${response.status})`;
-            updateMessage(role.id, round, { status: "error", text: errText });
-            if (msgIdx >= 0) completedMessages[msgIdx] = { ...completedMessages[msgIdx], status: "error", text: errText };
-            continue;
-          }
-
-          const text: string = data.text ?? "暂无结果";
-          updateMessage(role.id, round, { status: "done", text });
-          allPrevious.push({ roleTitle: role.title, text, round });
-          if (msgIdx >= 0) completedMessages[msgIdx] = { ...completedMessages[msgIdx], status: "done", text };
-        }
-      }
-    } finally {
-      setDebating(false);
-    }
-
-    // Layer 2: Final decision (GPT-5.4-Pro)
-    setLoadingDecision(true);
-    let decision: FinalDecision | null = null;
-    try {
-      const res = await fetch("/api/final-decision", {
+      const res = await fetch("/api/round-summary", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idea, allMessages: completedMessages }),
+        body: JSON.stringify({ idea, round, roundDebate, userComment: userText }),
       });
       const data = await res.json();
-      if (data.verdict) {
-        decision = data as FinalDecision;
-        setFinalDecision(decision);
-      }
+      setRoundSummaries((prev) => ({ ...prev, [round]: data.text ?? "摘要生成失败" }));
     } catch {
-      // silent — debate results are still shown
-    } finally {
-      setLoadingDecision(false);
+      setRoundSummaries((prev) => ({ ...prev, [round]: "摘要生成失败" }));
     }
 
-    // Layer 4: Save to Supabase
-    try {
-      const { data: session } = await supabase
-        .from("debate_sessions")
-        .insert({
-          idea,
-          messages: completedMessages,
-          final_decision: decision,
-        })
-        .select("id")
-        .single();
-      if (session?.id) setSessionId(session.id);
-    } catch {
-      // silent
-    }
+    setRoundPhase((prev) => ({ ...prev, [round]: "done" }));
+    scrollToBottom();
 
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    // Don't auto-start next round — user clicks button
+    void nextRound;
+  };
+
+  // Called when user clicks "Skip"
+  const handleSkipRound = (round: number) => {
+    setRoundPhase((prev) => ({ ...prev, [round]: "done" }));
+  };
+
+  // Called when user clicks "Start round N+1" button
+  const handleStartNextRound = (nextRound: number) => {
+    runRound(nextRound, rounds, contextMode, startupCapital, idea);
   };
 
   const roundGroups = Array.from({ length: rounds }, (_, i) => i + 1).map((round) => ({
@@ -640,11 +826,11 @@ export default function Home() {
   const debateComplete =
     !debating &&
     messages.length > 0 &&
-    messages.every((m) => m.status !== "pending" && m.status !== "loading");
+    messages.every((m) => m.status !== "pending" && m.status !== "loading") &&
+    (finalDecision !== null || loadingDecision);
 
   return (
     <main className="min-h-screen bg-[#050505] text-slate-200 selection:bg-indigo-500/30 overflow-x-hidden">
-      {/* Ambient blobs */}
       <div className="pointer-events-none fixed inset-0 overflow-hidden z-0">
         <div className="absolute -top-40 -left-20 w-96 h-96 bg-indigo-600/15 rounded-full blur-3xl" />
         <div className="absolute top-1/3 -right-32 w-80 h-80 bg-fuchsia-600/10 rounded-full blur-3xl" />
@@ -681,7 +867,7 @@ export default function Home() {
           <p className="text-slate-400 max-w-xl mx-auto leading-relaxed">
             输入你的创业想法，五位顾问将依次辩论——
             <br className="hidden md:block" />
-            后发言者会对前面的观点做出回应，恶魔代言人专门挑战一切。
+            每轮结束后你可以发言，顾问将在下一轮纳入你的观点。
           </p>
         </motion.header>
 
@@ -788,8 +974,14 @@ export default function Home() {
               {roundGroups.map(({ round, messages: roundMsgs }, groupIdx) => {
                 const hasStarted = roundMsgs.some((m) => m.status !== "pending");
                 if (!hasStarted && groupIdx > 0) return null;
+
+                const phase = roundPhase[round];
+                const isLastRound = round === rounds;
+                const nextRound = round + 1;
+                const summary = roundSummaries[round] ?? "";
+
                 return (
-                  <section key={round} className={groupIdx < roundGroups.length - 1 ? "mb-10" : ""}>
+                  <section key={round} className="mb-10">
                     <div className="flex items-center gap-3 mb-4 pb-3 border-b border-white/10">
                       <span className="text-xs font-semibold uppercase tracking-widest text-slate-500">
                         第{round}轮
@@ -806,16 +998,55 @@ export default function Home() {
                         );
                       })}
                     </div>
+
+                    {/* User input panel — shown between non-last rounds */}
+                    {!isLastRound && phase === "awaiting-user" && (
+                      <UserInputPanel
+                        round={round}
+                        nextRound={nextRound}
+                        onSubmit={(text) => handleUserSubmit(round, text)}
+                        onSkip={() => handleSkipRound(round)}
+                      />
+                    )}
+
+                    {/* Summary card — only when summarizing or summary exists */}
+                    {!isLastRound && (phase === "summarizing" || (phase === "done" && summary)) && (
+                      <RoundSummaryCard
+                        round={round}
+                        nextRound={nextRound}
+                        summary={summary}
+                        loading={phase === "summarizing"}
+                        onNext={() => handleStartNextRound(nextRound)}
+                        isLastRound={false}
+                      />
+                    )}
+
+                    {/* Skip case: done but no summary — show next-round button directly */}
+                    {!isLastRound && phase === "done" && !summary && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="mt-4 flex justify-end"
+                      >
+                        <button
+                          onClick={() => handleStartNextRound(nextRound)}
+                          className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white bg-white/10 hover:bg-white/20 border border-white/15 transition-all group"
+                        >
+                          开始第{nextRound}轮辩论
+                          <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+                        </button>
+                      </motion.div>
+                    )}
                   </section>
                 );
               })}
 
-              {/* Layer 2: Final decision */}
+              {/* Final decision */}
               {(loadingDecision || finalDecision) && (
                 <FinalDecisionCard decision={finalDecision} loading={loadingDecision} />
               )}
 
-              {/* Layer 3: Execution panel */}
+              {/* Execution panel */}
               {debateComplete && (
                 <ExecutionPanel
                   idea={idea}
@@ -825,7 +1056,6 @@ export default function Home() {
                 />
               )}
 
-              {/* Archive save notice */}
               {sessionId && (
                 <motion.div
                   initial={{ opacity: 0 }}
